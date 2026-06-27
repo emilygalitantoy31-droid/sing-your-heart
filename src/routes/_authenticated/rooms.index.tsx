@@ -8,7 +8,7 @@ import { AppHeader } from "@/components/karaoke/AppHeader";
 import { toast } from "sonner";
 import { Plus, LogIn, Music } from "lucide-react";
 
-export const Route = createFileRoute("/_authenticated/rooms")({
+export const Route = createFileRoute("/_authenticated/rooms/")({
   head: () => ({
     meta: [
       { title: "Your rooms — My Karaoke" },
