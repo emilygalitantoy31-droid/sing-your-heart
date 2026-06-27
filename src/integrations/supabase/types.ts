@@ -262,6 +262,7 @@ export type Database = {
         }
       }
       generate_room_code: { Args: never; Returns: string }
+      get_room_id_by_code: { Args: { _code: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
