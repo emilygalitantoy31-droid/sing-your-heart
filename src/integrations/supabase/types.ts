@@ -14,16 +14,294 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          display_name: string
+          id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name: string
+          id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      queue_items: {
+        Row: {
+          added_by: string
+          channel: string | null
+          created_at: string
+          duration_seconds: number | null
+          id: string
+          position: number
+          room_id: string
+          singer_id: string | null
+          status: Database["public"]["Enums"]["queue_status"]
+          thumbnail_url: string | null
+          title: string
+          youtube_id: string
+        }
+        Insert: {
+          added_by: string
+          channel?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          id?: string
+          position?: number
+          room_id: string
+          singer_id?: string | null
+          status?: Database["public"]["Enums"]["queue_status"]
+          thumbnail_url?: string | null
+          title: string
+          youtube_id: string
+        }
+        Update: {
+          added_by?: string
+          channel?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          id?: string
+          position?: number
+          room_id?: string
+          singer_id?: string | null
+          status?: Database["public"]["Enums"]["queue_status"]
+          thumbnail_url?: string | null
+          title?: string
+          youtube_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "queue_items_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      room_members: {
+        Row: {
+          joined_at: string
+          room_id: string
+          user_id: string
+        }
+        Insert: {
+          joined_at?: string
+          room_id: string
+          user_id: string
+        }
+        Update: {
+          joined_at?: string
+          room_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_members_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rooms: {
+        Row: {
+          code: string
+          created_at: string
+          current_item_id: string | null
+          host_id: string
+          id: string
+          name: string
+          playback_state: Database["public"]["Enums"]["playback_state"]
+          playback_updated_at: string
+          position_seconds: number
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          current_item_id?: string | null
+          host_id: string
+          id?: string
+          name?: string
+          playback_state?: Database["public"]["Enums"]["playback_state"]
+          playback_updated_at?: string
+          position_seconds?: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          current_item_id?: string | null
+          host_id?: string
+          id?: string
+          name?: string
+          playback_state?: Database["public"]["Enums"]["playback_state"]
+          playback_updated_at?: string
+          position_seconds?: number
+        }
+        Relationships: []
+      }
+      scores: {
+        Row: {
+          created_at: string
+          id: string
+          judged_by: string
+          queue_item_id: string
+          room_id: string
+          score: number
+          singer_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          judged_by: string
+          queue_item_id: string
+          room_id: string
+          score: number
+          singer_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          judged_by?: string
+          queue_item_id?: string
+          room_id?: string
+          score?: number
+          singer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scores_queue_item_id_fkey"
+            columns: ["queue_item_id"]
+            isOneToOne: true
+            referencedRelation: "queue_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scores_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      advance_queue: {
+        Args: { _room_id: string }
+        Returns: {
+          added_by: string
+          channel: string | null
+          created_at: string
+          duration_seconds: number | null
+          id: string
+          position: number
+          room_id: string
+          singer_id: string | null
+          status: Database["public"]["Enums"]["queue_status"]
+          thumbnail_url: string | null
+          title: string
+          youtube_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "queue_items"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_room: {
+        Args: { _name: string }
+        Returns: {
+          code: string
+          created_at: string
+          current_item_id: string | null
+          host_id: string
+          id: string
+          name: string
+          playback_state: Database["public"]["Enums"]["playback_state"]
+          playback_updated_at: string
+          position_seconds: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "rooms"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      generate_room_code: { Args: never; Returns: string }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_room_host: {
+        Args: { _room_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_room_member: {
+        Args: { _room_id: string; _user_id: string }
+        Returns: boolean
+      }
+      join_room_by_code: {
+        Args: { _code: string }
+        Returns: {
+          code: string
+          created_at: string
+          current_item_id: string | null
+          host_id: string
+          id: string
+          name: string
+          playback_state: Database["public"]["Enums"]["playback_state"]
+          playback_updated_at: string
+          position_seconds: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "rooms"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
+      playback_state: "idle" | "playing" | "paused"
+      queue_status: "queued" | "playing" | "done" | "skipped"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +428,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+      playback_state: ["idle", "playing", "paused"],
+      queue_status: ["queued", "playing", "done", "skipped"],
+    },
   },
 } as const
