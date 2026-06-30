@@ -9,6 +9,7 @@ import { ScoreDialog } from "@/components/karaoke/ScoreDialog";
 import { Button } from "@/components/ui/button";
 import { Play, Pause, SkipForward, Trash2, Crown, Trophy, Copy, Mic2 } from "lucide-react";
 import { toast } from "sonner";
+import { InviteDialog } from "@/components/karaoke/InviteDialog";
 
 export const Route = createFileRoute("/_authenticated/rooms/$code")({
   head: ({ params }) => ({
@@ -222,11 +223,14 @@ function RoomPage() {
             </div>
             <h1 className="font-display text-3xl font-black sm:text-4xl">{room.name}</h1>
           </div>
-          <button onClick={copyCode} className="group flex items-center gap-2 rounded-xl border border-border bg-card/60 px-4 py-2 hover:border-[var(--neon)]">
-            <span className="text-xs uppercase tracking-widest text-muted-foreground">Code</span>
-            <span className="font-mono text-xl tracking-[0.4em] text-[var(--neon)]">{room.code}</span>
-            <Copy className="size-3.5 text-muted-foreground group-hover:text-foreground" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={copyCode} className="group flex items-center gap-2 rounded-xl border border-border bg-card/60 px-4 py-2 hover:border-[var(--neon)]">
+              <span className="text-xs uppercase tracking-widest text-muted-foreground">Code</span>
+              <span className="font-mono text-xl tracking-[0.4em] text-[var(--neon)]">{room.code}</span>
+              <Copy className="size-3.5 text-muted-foreground group-hover:text-foreground" />
+            </button>
+            <InviteDialog code={room.code} />
+          </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
