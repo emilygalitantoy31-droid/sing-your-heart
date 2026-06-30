@@ -10,7 +10,7 @@ export function InviteDialog({ code }: { code: string }) {
   const [open, setOpen] = useState(false);
   const [qr, setQr] = useState<string>("");
   const [copied, setCopied] = useState<"link" | "code" | null>(null);
-  const link = typeof window !== "undefined" ? `${window.location.origin}/rooms/${code}` : `/rooms/${code}`;
+  const link = typeof window !== "undefined" ? `${window.location.origin}/join/${code}` : `/join/${code}`;
 
   useEffect(() => {
     if (!open) return;
