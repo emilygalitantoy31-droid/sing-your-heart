@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Mic2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,17 +20,28 @@ export const Route = createFileRoute("/auth")({
 });
 
 function AuthPage() {
-  const navigate = useNavigate();
+  
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
 
+  function consumeRedirect(): string {
+    try {
+      const saved = sessionStorage.getItem("postAuthRedirect");
+      if (saved && saved.startsWith("/")) {
+        sessionStorage.removeItem("postAuthRedirect");
+        return saved;
+      }
+    } catch {}
+    return "/rooms";
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/rooms" });
+      if (data.session) window.location.replace(consumeRedirect());
     });
-  }, [navigate]);
+  }, []);
 
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
@@ -39,17 +50,22 @@ function AuthPage() {
     setLoading(false);
     if (error) return toast.error(error.message);
     toast.success("Welcome back");
-    navigate({ to: "/rooms" });
+    window.location.replace(consumeRedirect());
   }
 
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    let redirectPath = "/rooms";
+    try {
+      const saved = sessionStorage.getItem("postAuthRedirect");
+      if (saved && saved.startsWith("/")) redirectPath = saved;
+    } catch {}
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/rooms`,
+        emailRedirectTo: `${window.location.origin}${redirectPath}`,
         data: { display_name: displayName || email.split("@")[0] },
       },
     });
@@ -64,7 +80,7 @@ function AuthPage() {
     });
     if (result.error) return toast.error(result.error.message);
     if (result.redirected) return;
-    navigate({ to: "/rooms" });
+    window.location.replace(consumeRedirect());
   }
 
   return (
