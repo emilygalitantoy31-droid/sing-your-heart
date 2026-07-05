@@ -279,6 +279,7 @@ function RoomPage() {
 
           {/* RIGHT: queue + leaderboard */}
           <aside className="space-y-4">
+            <InviteCard code={room.code} />
             <div className="rounded-2xl border border-border bg-card/60 p-4">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="font-display text-lg font-semibold">Queue</h2>
