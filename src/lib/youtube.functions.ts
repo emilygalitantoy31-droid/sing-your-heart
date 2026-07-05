@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export type YouTubeSearchResult = {
   videoId: string;
@@ -8,6 +9,7 @@ export type YouTubeSearchResult = {
 };
 
 export const searchYouTube = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((data: { q: string }) => {
     if (!data || typeof data.q !== "string") throw new Error("Invalid query");
     const q = data.q.trim().slice(0, 200);

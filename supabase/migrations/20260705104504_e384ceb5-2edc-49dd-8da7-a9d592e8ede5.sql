@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.shares_room_with(uuid, uuid) FROM PUBLIC, anon;
