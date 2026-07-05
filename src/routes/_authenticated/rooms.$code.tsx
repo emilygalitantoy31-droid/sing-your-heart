@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Play, Pause, SkipForward, Trash2, Crown, Trophy, Copy, Mic2 } from "lucide-react";
 import { toast } from "sonner";
 import { InviteDialog } from "@/components/karaoke/InviteDialog";
+import { InviteCard } from "@/components/karaoke/InviteCard";
 
 export const Route = createFileRoute("/_authenticated/rooms/$code")({
   head: ({ params }) => ({
