@@ -289,7 +289,12 @@ function RoomPage() {
           <div className="space-y-4">
             <YouTubePlayer
               videoId={current?.youtube_id ?? null}
-              onReady={(h) => { playerRef.current = h; }}
+              onReady={(h) => {
+                playerRef.current = h;
+                // Force-align to room state as soon as the player is usable — critical for late joiners.
+                lastAppliedRef.current = "";
+                applySync({ force: true });
+              }}
               onEnded={onSongEnded}
             />
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/60 p-3">
