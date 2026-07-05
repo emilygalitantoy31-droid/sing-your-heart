@@ -326,6 +326,7 @@ function RoomPage() {
                 applySync({ force: true });
               }}
               onEnded={onSongEnded}
+              onStateChange={onPlayerStateChange}
             />
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/60 p-3">
               <div className="min-w-0 flex-1">
