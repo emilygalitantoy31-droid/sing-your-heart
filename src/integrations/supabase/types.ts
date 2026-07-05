@@ -298,6 +298,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      shares_room_with: { Args: { _a: string; _b: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "user"
