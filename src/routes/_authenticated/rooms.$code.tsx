@@ -122,21 +122,71 @@ function RoomPage() {
     return () => { supabase.removeChannel(ch); };
   }, [room?.id, loadQueue, loadScores, navigate]);
 
-  // Apply playback sync to local player
+  // ---- Playback sync ----
+  const roomRef = useRef<Room | null>(null);
+  const currentRef = useRef<QueueItem | null>(null);
+  useEffect(() => { roomRef.current = room; }, [room]);
+  useEffect(() => { currentRef.current = current; }, [current]);
+
+  const applySync = useCallback((opts?: { force?: boolean }) => {
+    const r = roomRef.current;
+    const c = currentRef.current;
+    const p = playerRef.current;
+    if (!r || !p || !c) return;
+    const elapsed = (Date.now() - new Date(r.playback_updated_at).getTime()) / 1000;
+    const target = r.playback_state === "playing"
+      ? r.position_seconds + Math.max(0, elapsed)
+      : r.position_seconds;
+    const now = p.currentTime();
+    // Non-controllers get tight sync; controllers keep a wider tolerance so their scrubbing isn't fought.
+    const tolerance = canControl ? 1.5 : 0.4;
+    if (opts?.force || Math.abs(now - target) > tolerance) p.seek(target);
+    if (r.playback_state === "playing") p.play();
+    else if (r.playback_state === "paused") p.pause();
+  }, [canControl]);
+
+  // Apply on room/current change (new video, state change, seek by controller).
   useEffect(() => {
-    if (!room || !playerRef.current || !current) return;
+    if (!room || !current) return;
     const sig = `${current.id}:${room.playback_state}:${room.position_seconds}:${room.playback_updated_at}`;
     if (sig === lastAppliedRef.current) return;
     lastAppliedRef.current = sig;
-    const elapsed = (Date.now() - new Date(room.playback_updated_at).getTime()) / 1000;
-    const target = room.playback_state === "playing"
-      ? room.position_seconds + Math.max(0, elapsed)
-      : room.position_seconds;
-    const now = playerRef.current.currentTime();
-    if (Math.abs(now - target) > 1.5) playerRef.current.seek(target);
-    if (room.playback_state === "playing") playerRef.current.play();
-    else if (room.playback_state === "paused") playerRef.current.pause();
-  }, [room, current]);
+    applySync({ force: true });
+  }, [room, current, applySync]);
+
+  // Continuous drift correction for followers.
+  useEffect(() => {
+    if (!current || canControl) return;
+    const id = window.setInterval(() => applySync(), 2000);
+    return () => window.clearInterval(id);
+  }, [current, canControl, applySync]);
+
+  // Re-sync when the tab regains focus (dropped setIntervals catch up).
+  useEffect(() => {
+    function onVis() { if (document.visibilityState === "visible") applySync({ force: true }); }
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onVis);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onVis);
+    };
+  }, [applySync]);
+
+  // Controller heartbeat: publish real playhead every 4s so late-joiners land accurately.
+  useEffect(() => {
+    if (!room || !current || !canControl || room.playback_state !== "playing") return;
+    const id = window.setInterval(async () => {
+      const p = playerRef.current;
+      if (!p) return;
+      const pos = p.currentTime();
+      await supabase.from("rooms").update({
+        position_seconds: pos,
+        playback_updated_at: new Date().toISOString(),
+      }).eq("id", room.id);
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [room?.id, room?.playback_state, current?.id, canControl]);
+
 
   // ---- Controls ----
   async function updatePlayback(patch: Partial<Pick<Room, "playback_state" | "position_seconds">>) {
