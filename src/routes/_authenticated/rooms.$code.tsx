@@ -125,22 +125,44 @@ function RoomPage() {
   // ---- Playback sync ----
   const roomRef = useRef<Room | null>(null);
   const currentRef = useRef<QueueItem | null>(null);
+  const lastSeekAtRef = useRef<number>(0);
   useEffect(() => { roomRef.current = room; }, [room]);
   useEffect(() => { currentRef.current = current; }, [current]);
+
+  // Compensates for YouTube's post-seek buffer so followers don't consistently trail.
+  const FOLLOWER_LOOKAHEAD = 0.7;
+  // Ignore small drift; only correct when clearly out of sync so we don't re-buffer constantly.
+  const FOLLOWER_TOLERANCE = 0.9;
+  const CONTROLLER_TOLERANCE = 1.5;
+  // After a seek, the player buffers ~1-2s. Don't re-seek during that window.
+  const SEEK_COOLDOWN_MS = 2500;
 
   const applySync = useCallback((opts?: { force?: boolean }) => {
     const r = roomRef.current;
     const c = currentRef.current;
     const p = playerRef.current;
     if (!r || !p || !c) return;
+    const sinceSeek = Date.now() - lastSeekAtRef.current;
+    if (!opts?.force && sinceSeek < SEEK_COOLDOWN_MS) {
+      // Just seeked; still buffering. Only ensure play/pause state, don't seek again.
+      if (r.playback_state === "playing") p.play();
+      else if (r.playback_state === "paused") p.pause();
+      return;
+    }
+
     const elapsed = (Date.now() - new Date(r.playback_updated_at).getTime()) / 1000;
-    const target = r.playback_state === "playing"
+    let target = r.playback_state === "playing"
       ? r.position_seconds + Math.max(0, elapsed)
       : r.position_seconds;
+    // Lookahead only for followers on a playing stream — controller seeks are exact.
+    if (r.playback_state === "playing" && !canControl) target += FOLLOWER_LOOKAHEAD;
+
     const now = p.currentTime();
-    // Non-controllers get tight sync; controllers keep a wider tolerance so their scrubbing isn't fought.
-    const tolerance = canControl ? 1.5 : 0.4;
-    if (opts?.force || Math.abs(now - target) > tolerance) p.seek(target);
+    const tolerance = canControl ? CONTROLLER_TOLERANCE : FOLLOWER_TOLERANCE;
+    if (opts?.force || Math.abs(now - target) > tolerance) {
+      p.seek(target);
+      lastSeekAtRef.current = Date.now();
+    }
     if (r.playback_state === "playing") p.play();
     else if (r.playback_state === "paused") p.pause();
   }, [canControl]);
@@ -157,7 +179,7 @@ function RoomPage() {
   // Continuous drift correction for followers.
   useEffect(() => {
     if (!current || canControl) return;
-    const id = window.setInterval(() => applySync(), 2000);
+    const id = window.setInterval(() => applySync(), 3000);
     return () => window.clearInterval(id);
   }, [current, canControl, applySync]);
 
@@ -186,6 +208,14 @@ function RoomPage() {
     }, 4000);
     return () => window.clearInterval(id);
   }, [room?.id, room?.playback_state, current?.id, canControl]);
+
+  // Handle YouTube player state transitions: when we finish buffering into PLAYING,
+  // reset the cooldown so the next drift tick can correct if needed.
+  const onPlayerStateChange = useCallback((state: number) => {
+    // 1 = PLAYING; clearing the cooldown lets drift correction resume immediately.
+    if (state === 1) lastSeekAtRef.current = 0;
+  }, []);
+
 
 
   // ---- Controls ----
@@ -296,6 +326,7 @@ function RoomPage() {
                 applySync({ force: true });
               }}
               onEnded={onSongEnded}
+              onStateChange={onPlayerStateChange}
             />
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/60 p-3">
               <div className="min-w-0 flex-1">
