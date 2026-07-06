@@ -267,11 +267,6 @@ function RoomPage() {
     await supabase.from("queue_items").update({ singer_id: userId }).eq("id", id);
   }
 
-  function copyCode() {
-    if (!room) return;
-    navigator.clipboard.writeText(room.code);
-    toast.success("Code copied");
-  }
 
   if (!room || !userId) {
     return (
