@@ -4,8 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppHeader } from "@/components/karaoke/AppHeader";
 import { YouTubePlayer, type PlayerHandle } from "@/components/karaoke/YouTubePlayer";
 import { AddSongDialog } from "@/components/karaoke/AddSongDialog";
-import { PitchVisualizer } from "@/components/karaoke/PitchVisualizer";
-import { ScoreDialog } from "@/components/karaoke/ScoreDialog";
+import { PitchVisualizer, type PitchVisualizerHandle } from "@/components/karaoke/PitchVisualizer";
 import { Button } from "@/components/ui/button";
 import { Play, Pause, SkipForward, Trash2, Crown, Trophy, Mic2 } from "lucide-react";
 import { toast } from "sonner";
@@ -46,10 +45,10 @@ function RoomPage() {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [scores, setScores] = useState<Score[]>([]);
-  const [scoreOpen, setScoreOpen] = useState(false);
-  const [pendingScoreItem, setPendingScoreItem] = useState<QueueItem | null>(null);
   const playerRef = useRef<PlayerHandle | null>(null);
+  const pitchRef = useRef<PitchVisualizerHandle | null>(null);
   const lastAppliedRef = useRef<string>(""); // signature of last applied sync
+  const scoredItemRef = useRef<string | null>(null);
 
   const isHost = !!(room && userId && room.host_id === userId);
   const current = useMemo(() => items.find((i) => i.id === room?.current_item_id) ?? null, [items, room]);
@@ -128,6 +127,12 @@ function RoomPage() {
   const lastSeekAtRef = useRef<number>(0);
   useEffect(() => { roomRef.current = room; }, [room]);
   useEffect(() => { currentRef.current = current; }, [current]);
+  // Reset the auto-scorer whenever a new song becomes current so stats don't carry over.
+  useEffect(() => {
+    if (!current) return;
+    scoredItemRef.current = null;
+    pitchRef.current?.resetScore();
+  }, [current?.id]);
 
   // Compensates for YouTube's post-seek buffer so followers don't consistently trail.
   const FOLLOWER_LOOKAHEAD = 0.7;
@@ -232,25 +237,33 @@ function RoomPage() {
   async function play() { await updatePlayback({ playback_state: "playing" }); }
   async function pause() { await updatePlayback({ playback_state: "paused" }); }
 
+  // Submit the singer's auto-computed score. Only the singer's device has the mic data,
+  // so scoring is inserted from there; other devices just advance the queue.
+  async function submitAutoScoreForCurrent(item: QueueItem) {
+    if (!room || !userId) return;
+    if (scoredItemRef.current === item.id) return;
+    scoredItemRef.current = item.id;
+    if (!item.singer_id || item.singer_id !== userId) return;
+    if (!pitchRef.current?.isActive()) return; // singer never turned mic on
+    const value = pitchRef.current.getScore();
+    if (value <= 0) return;
+    const { error } = await supabase.from("scores").insert({
+      room_id: room.id, queue_item_id: item.id, singer_id: item.singer_id, judged_by: userId, score: value,
+    });
+    if (!error) toast.success(`You scored ${value}`);
+  }
+
   async function skip() {
     if (!room || !isHost) return;
-    // Open score dialog for current, then advance
-    if (current) {
-      setPendingScoreItem(current);
-      setScoreOpen(true);
-    } else {
-      await supabase.rpc("advance_queue", { _room_id: room.id });
-    }
+    if (current) await submitAutoScoreForCurrent(current);
+    await supabase.rpc("advance_queue", { _room_id: room.id });
   }
 
   async function onSongEnded() {
-    if (!room || !isHost) return;
-    if (current) {
-      setPendingScoreItem(current);
-      setScoreOpen(true);
-    } else {
-      await supabase.rpc("advance_queue", { _room_id: room.id });
-    }
+    if (!room) return;
+    // Every device tries to submit; only the singer's insert actually goes through.
+    if (current) await submitAutoScoreForCurrent(current);
+    if (isHost) await supabase.rpc("advance_queue", { _room_id: room.id });
   }
 
   async function startNext() {
@@ -350,7 +363,7 @@ function RoomPage() {
                 )}
               </div>
             </div>
-            <PitchVisualizer />
+            <PitchVisualizer ref={pitchRef} />
           </div>
 
           {/* RIGHT: queue + leaderboard */}
@@ -417,21 +430,6 @@ function RoomPage() {
         </div>
       </main>
 
-      {pendingScoreItem && (
-        <ScoreDialog
-          open={scoreOpen}
-          onOpenChange={setScoreOpen}
-          roomId={room.id}
-          queueItemId={pendingScoreItem.id}
-          singerId={pendingScoreItem.singer_id}
-          singerName={pendingScoreItem.singer_id ? profiles[pendingScoreItem.singer_id]?.display_name ?? "Singer" : "Open mic"}
-          judgedBy={userId}
-          onScored={async () => {
-            await supabase.rpc("advance_queue", { _room_id: room.id });
-            setPendingScoreItem(null);
-          }}
-        />
-      )}
     </div>
   );
 }
