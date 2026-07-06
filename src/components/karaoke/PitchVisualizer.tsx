@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff } from "lucide-react";
 
@@ -23,7 +23,7 @@ function autoCorrelate(buf: Float32Array, sampleRate: number): number {
   let d = 0; while (c[d] > c[d + 1]) d++;
   let maxval = -1, maxpos = -1;
   for (let i = d; i < SIZE; i++) if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
-  let T0 = maxpos;
+  const T0 = maxpos;
   if (T0 <= 0) return -1;
   return sampleRate / T0;
 }
@@ -35,20 +35,63 @@ function freqToNote(f: number) {
   return { name: NOTES[r % 12], octave: Math.floor(r / 12) - 1 };
 }
 
-export function PitchVisualizer() {
+export type PitchVisualizerHandle = {
+  resetScore: () => void;
+  getScore: () => number;
+  isActive: () => boolean;
+};
+
+type ScoreStats = {
+  frames: number;
+  voiced: number;
+  stableCents: number; // sum of |cents-to-nearest-note| for voiced frames
+  rmsSum: number;
+  rmsFrames: number;
+};
+
+function emptyStats(): ScoreStats {
+  return { frames: 0, voiced: 0, stableCents: 0, rmsSum: 0, rmsFrames: 0 };
+}
+
+function computeScore(s: ScoreStats): number {
+  if (s.frames < 20) return 0;
+  const voicedRatio = s.voiced / s.frames; // 0..1
+  // Average cents-off across voiced frames (0 perfect, 50 worst since we take nearest note).
+  const avgCents = s.voiced > 0 ? s.stableCents / s.voiced : 50;
+  const stability = Math.max(0, 1 - avgCents / 50); // 1 perfect
+  const avgRms = s.rmsFrames > 0 ? s.rmsSum / s.rmsFrames : 0;
+  // Dynamics: reward audible signal, cap at rms 0.08.
+  const dynamics = Math.max(0, Math.min(1, avgRms / 0.08));
+  // Weighted blend: voiced coverage 40, pitch stability 45, dynamics 15.
+  const raw = 40 * voicedRatio + 45 * stability + 15 * dynamics;
+  // Floor at 50 if they actually sang for a decent chunk, so the room stays fun.
+  const base = voicedRatio > 0.15 ? Math.max(50, raw) : raw;
+  return Math.round(Math.max(0, Math.min(100, base)));
+}
+
+export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchVisualizer(_props, ref) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [active, setActive] = useState(false);
   const [note, setNote] = useState<string>("—");
+  const [liveScore, setLiveScore] = useState<number>(0);
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
   const historyRef = useRef<number[]>([]);
+  const statsRef = useRef<ScoreStats>(emptyStats());
+  const activeRef = useRef(false);
+
+  useImperativeHandle(ref, () => ({
+    resetScore: () => { statsRef.current = emptyStats(); setLiveScore(0); },
+    getScore: () => computeScore(statsRef.current),
+    isActive: () => activeRef.current,
+  }), []);
 
   async function start() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false }, video: false });
       streamRef.current = stream;
-      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ac: AudioContext = new Ctx();
       ctxRef.current = ac;
       const src = ac.createMediaStreamSource(stream);
@@ -57,24 +100,42 @@ export function PitchVisualizer() {
       src.connect(analyser);
       const buf = new Float32Array(analyser.fftSize);
       setActive(true);
+      activeRef.current = true;
 
+      let scoreTick = 0;
       const tick = () => {
         analyser.getFloatTimeDomainData(buf);
+        // RMS for dynamics.
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+        const rms = Math.sqrt(sum / buf.length);
+        statsRef.current.rmsSum += rms;
+        statsRef.current.rmsFrames += 1;
+
         const f = autoCorrelate(buf, ac.sampleRate);
+        statsRef.current.frames += 1;
         if (f > 50 && f < 1500) {
           const { name, octave } = freqToNote(f);
           setNote(`${name}${octave}`);
           historyRef.current.push(f);
+          // Cents to nearest semitone (0 = perfect).
+          const midi = 12 * Math.log2(f / 440) + 69;
+          const cents = Math.abs(midi - Math.round(midi)) * 100;
+          statsRef.current.voiced += 1;
+          statsRef.current.stableCents += cents;
         } else {
           historyRef.current.push(0);
         }
         if (historyRef.current.length > 200) historyRef.current.shift();
         draw();
+        scoreTick += 1;
+        if (scoreTick % 30 === 0) setLiveScore(computeScore(statsRef.current));
         rafRef.current = requestAnimationFrame(tick);
       };
       tick();
     } catch {
       setActive(false);
+      activeRef.current = false;
     }
   }
 
@@ -86,6 +147,7 @@ export function PitchVisualizer() {
     ctxRef.current = null;
     historyRef.current = [];
     setActive(false);
+    activeRef.current = false;
     setNote("—");
     draw();
   }
@@ -123,10 +185,17 @@ export function PitchVisualizer() {
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h3 className="font-display text-sm font-semibold">Pitch line</h3>
-          <p className="text-xs text-muted-foreground">Local mic · never uploaded</p>
+          <p className="text-xs text-muted-foreground">Local mic · scored automatically</p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="font-mono text-xl text-[var(--neon)]">{note}</span>
+          <div className="text-right">
+            <div className="font-mono text-xl text-[var(--neon)]">{note}</div>
+            {active && (
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                live <span className="font-mono text-[var(--neon-2)]">{liveScore}</span>
+              </div>
+            )}
+          </div>
           {active ? (
             <Button size="sm" variant="outline" onClick={stop}><MicOff className="mr-1 size-4" /> Stop</Button>
           ) : (
@@ -137,4 +206,4 @@ export function PitchVisualizer() {
       <canvas ref={canvasRef} width={600} height={120} className="h-24 w-full rounded-lg bg-stage/60" />
     </div>
   );
-}
+});
