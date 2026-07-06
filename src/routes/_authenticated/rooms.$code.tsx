@@ -231,25 +231,33 @@ function RoomPage() {
   async function play() { await updatePlayback({ playback_state: "playing" }); }
   async function pause() { await updatePlayback({ playback_state: "paused" }); }
 
+  // Submit the singer's auto-computed score. Only the singer's device has the mic data,
+  // so scoring is inserted from there; other devices just advance the queue.
+  async function submitAutoScoreForCurrent(item: QueueItem) {
+    if (!room || !userId) return;
+    if (scoredItemRef.current === item.id) return;
+    scoredItemRef.current = item.id;
+    if (!item.singer_id || item.singer_id !== userId) return;
+    if (!pitchRef.current?.isActive()) return; // singer never turned mic on
+    const value = pitchRef.current.getScore();
+    if (value <= 0) return;
+    const { error } = await supabase.from("scores").insert({
+      room_id: room.id, queue_item_id: item.id, singer_id: item.singer_id, judged_by: userId, score: value,
+    });
+    if (!error) toast.success(`You scored ${value}`);
+  }
+
   async function skip() {
     if (!room || !isHost) return;
-    // Open score dialog for current, then advance
-    if (current) {
-      setPendingScoreItem(current);
-      setScoreOpen(true);
-    } else {
-      await supabase.rpc("advance_queue", { _room_id: room.id });
-    }
+    if (current) await submitAutoScoreForCurrent(current);
+    await supabase.rpc("advance_queue", { _room_id: room.id });
   }
 
   async function onSongEnded() {
-    if (!room || !isHost) return;
-    if (current) {
-      setPendingScoreItem(current);
-      setScoreOpen(true);
-    } else {
-      await supabase.rpc("advance_queue", { _room_id: room.id });
-    }
+    if (!room) return;
+    // Every device tries to submit; only the singer's insert actually goes through.
+    if (current) await submitAutoScoreForCurrent(current);
+    if (isHost) await supabase.rpc("advance_queue", { _room_id: room.id });
   }
 
   async function startNext() {
