@@ -127,6 +127,12 @@ function RoomPage() {
   const lastSeekAtRef = useRef<number>(0);
   useEffect(() => { roomRef.current = room; }, [room]);
   useEffect(() => { currentRef.current = current; }, [current]);
+  // Reset the auto-scorer whenever a new song becomes current so stats don't carry over.
+  useEffect(() => {
+    if (!current) return;
+    scoredItemRef.current = null;
+    pitchRef.current?.resetScore();
+  }, [current?.id]);
 
   // Compensates for YouTube's post-seek buffer so followers don't consistently trail.
   const FOLLOWER_LOOKAHEAD = 0.7;
