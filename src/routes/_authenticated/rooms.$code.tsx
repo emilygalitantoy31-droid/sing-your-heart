@@ -416,21 +416,6 @@ function RoomPage() {
         </div>
       </main>
 
-      {pendingScoreItem && (
-        <ScoreDialog
-          open={scoreOpen}
-          onOpenChange={setScoreOpen}
-          roomId={room.id}
-          queueItemId={pendingScoreItem.id}
-          singerId={pendingScoreItem.singer_id}
-          singerName={pendingScoreItem.singer_id ? profiles[pendingScoreItem.singer_id]?.display_name ?? "Singer" : "Open mic"}
-          judgedBy={userId}
-          onScored={async () => {
-            await supabase.rpc("advance_queue", { _room_id: room.id });
-            setPendingScoreItem(null);
-          }}
-        />
-      )}
     </div>
   );
 }
