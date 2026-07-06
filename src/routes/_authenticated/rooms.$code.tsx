@@ -7,7 +7,7 @@ import { AddSongDialog } from "@/components/karaoke/AddSongDialog";
 import { PitchVisualizer } from "@/components/karaoke/PitchVisualizer";
 import { ScoreDialog } from "@/components/karaoke/ScoreDialog";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, SkipForward, Trash2, Crown, Trophy, Copy, Mic2 } from "lucide-react";
+import { Play, Pause, SkipForward, Trash2, Crown, Trophy, Mic2 } from "lucide-react";
 import { toast } from "sonner";
 import { InviteDialog } from "@/components/karaoke/InviteDialog";
 import { InviteCard } from "@/components/karaoke/InviteCard";
@@ -267,11 +267,6 @@ function RoomPage() {
     await supabase.from("queue_items").update({ singer_id: userId }).eq("id", id);
   }
 
-  function copyCode() {
-    if (!room) return;
-    navigator.clipboard.writeText(room.code);
-    toast.success("Code copied");
-  }
 
   if (!room || !userId) {
     return (
@@ -305,11 +300,6 @@ function RoomPage() {
             <h1 className="font-display text-3xl font-black sm:text-4xl">{room.name}</h1>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={copyCode} className="group flex items-center gap-2 rounded-xl border border-border bg-card/60 px-4 py-2 hover:border-[var(--neon)]">
-              <span className="text-xs uppercase tracking-widest text-muted-foreground">Code</span>
-              <span className="font-mono text-xl tracking-[0.4em] text-[var(--neon)]">{room.code}</span>
-              <Copy className="size-3.5 text-muted-foreground group-hover:text-foreground" />
-            </button>
             <InviteDialog code={room.code} />
           </div>
         </div>
