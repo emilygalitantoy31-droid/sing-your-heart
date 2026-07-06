@@ -363,7 +363,7 @@ function RoomPage() {
                 )}
               </div>
             </div>
-            <PitchVisualizer />
+            <PitchVisualizer ref={pitchRef} />
           </div>
 
           {/* RIGHT: queue + leaderboard */}
