@@ -45,10 +45,10 @@ function RoomPage() {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [scores, setScores] = useState<Score[]>([]);
-  const [scoreOpen, setScoreOpen] = useState(false);
-  const [pendingScoreItem, setPendingScoreItem] = useState<QueueItem | null>(null);
   const playerRef = useRef<PlayerHandle | null>(null);
+  const pitchRef = useRef<PitchVisualizerHandle | null>(null);
   const lastAppliedRef = useRef<string>(""); // signature of last applied sync
+  const scoredItemRef = useRef<string | null>(null);
 
   const isHost = !!(room && userId && room.host_id === userId);
   const current = useMemo(() => items.find((i) => i.id === room?.current_item_id) ?? null, [items, room]);
