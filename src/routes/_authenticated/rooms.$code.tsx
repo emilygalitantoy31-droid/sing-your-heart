@@ -247,6 +247,8 @@ function RoomPage() {
     if (!pitchRef.current?.isActive()) return; // singer never turned mic on
     const value = pitchRef.current.getScore();
     if (value <= 0) return;
+    // Reveal the final score prominently before the queue advances.
+    pitchRef.current.flashFinal(value);
     const { error } = await supabase.from("scores").insert({
       room_id: room.id, queue_item_id: item.id, singer_id: item.singer_id, judged_by: userId, score: value,
     });
