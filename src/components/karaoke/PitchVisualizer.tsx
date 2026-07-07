@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, MicOff } from "lucide-react";
+import { Mic, MicOff, Sparkles } from "lucide-react";
 
 // Local mic pitch line — autocorrelation. No upload, no server.
 function autoCorrelate(buf: Float32Array, sampleRate: number): number {
@@ -39,6 +39,7 @@ export type PitchVisualizerHandle = {
   resetScore: () => void;
   getScore: () => number;
   isActive: () => boolean;
+  flashFinal: (score: number) => void;
 };
 
 type ScoreStats = {
@@ -49,42 +50,70 @@ type ScoreStats = {
   rmsFrames: number;
 };
 
+type Breakdown = {
+  score: number;
+  voicedRatio: number;   // 0..1
+  stability: number;     // 0..1
+  dynamics: number;      // 0..1
+};
+
 function emptyStats(): ScoreStats {
   return { frames: 0, voiced: 0, stableCents: 0, rmsSum: 0, rmsFrames: 0 };
 }
 
-function computeScore(s: ScoreStats): number {
-  if (s.frames < 20) return 0;
-  const voicedRatio = s.voiced / s.frames; // 0..1
-  // Average cents-off across voiced frames (0 perfect, 50 worst since we take nearest note).
+function scoreBreakdown(s: ScoreStats): Breakdown {
+  if (s.frames < 20) return { score: 0, voicedRatio: 0, stability: 0, dynamics: 0 };
+  const voicedRatio = s.voiced / s.frames;
   const avgCents = s.voiced > 0 ? s.stableCents / s.voiced : 50;
-  const stability = Math.max(0, 1 - avgCents / 50); // 1 perfect
+  const stability = Math.max(0, 1 - avgCents / 50);
   const avgRms = s.rmsFrames > 0 ? s.rmsSum / s.rmsFrames : 0;
-  // Dynamics: reward audible signal, cap at rms 0.08.
   const dynamics = Math.max(0, Math.min(1, avgRms / 0.08));
-  // Weighted blend: voiced coverage 40, pitch stability 45, dynamics 15.
   const raw = 40 * voicedRatio + 45 * stability + 15 * dynamics;
-  // Floor at 50 if they actually sang for a decent chunk, so the room stays fun.
   const base = voicedRatio > 0.15 ? Math.max(50, raw) : raw;
-  return Math.round(Math.max(0, Math.min(100, base)));
+  const score = Math.round(Math.max(0, Math.min(100, base)));
+  return { score, voicedRatio, stability, dynamics };
+}
+
+function computeScore(s: ScoreStats): number {
+  return scoreBreakdown(s).score;
+}
+
+function tierLabel(score: number): { label: string; color: string } {
+  if (score >= 90) return { label: "Superstar", color: "oklch(0.82 0.18 200)" };
+  if (score >= 80) return { label: "On fire", color: "oklch(0.78 0.2 60)" };
+  if (score >= 65) return { label: "Solid", color: "oklch(0.72 0.28 340)" };
+  if (score >= 50) return { label: "Warming up", color: "oklch(0.7 0.15 40)" };
+  return { label: "Keep going", color: "oklch(0.65 0.08 260)" };
 }
 
 export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchVisualizer(_props, ref) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [active, setActive] = useState(false);
   const [note, setNote] = useState<string>("—");
-  const [liveScore, setLiveScore] = useState<number>(0);
+  const [breakdown, setBreakdown] = useState<Breakdown>({ score: 0, voicedRatio: 0, stability: 0, dynamics: 0 });
+  const [finalFlash, setFinalFlash] = useState<number | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
   const historyRef = useRef<number[]>([]);
   const statsRef = useRef<ScoreStats>(emptyStats());
   const activeRef = useRef(false);
+  const flashTimerRef = useRef<number | null>(null);
 
   useImperativeHandle(ref, () => ({
-    resetScore: () => { statsRef.current = emptyStats(); setLiveScore(0); },
+    resetScore: () => {
+      statsRef.current = emptyStats();
+      setBreakdown({ score: 0, voicedRatio: 0, stability: 0, dynamics: 0 });
+      setFinalFlash(null);
+      if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+    },
     getScore: () => computeScore(statsRef.current),
     isActive: () => activeRef.current,
+    flashFinal: (score: number) => {
+      setFinalFlash(score);
+      if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = window.setTimeout(() => setFinalFlash(null), 6000);
+    },
   }), []);
 
   async function start() {
@@ -105,7 +134,6 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
       let scoreTick = 0;
       const tick = () => {
         analyser.getFloatTimeDomainData(buf);
-        // RMS for dynamics.
         let sum = 0;
         for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
         const rms = Math.sqrt(sum / buf.length);
@@ -118,7 +146,6 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
           const { name, octave } = freqToNote(f);
           setNote(`${name}${octave}`);
           historyRef.current.push(f);
-          // Cents to nearest semitone (0 = perfect).
           const midi = 12 * Math.log2(f / 440) + 69;
           const cents = Math.abs(midi - Math.round(midi)) * 100;
           statsRef.current.voiced += 1;
@@ -129,7 +156,8 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
         if (historyRef.current.length > 200) historyRef.current.shift();
         draw();
         scoreTick += 1;
-        if (scoreTick % 30 === 0) setLiveScore(computeScore(statsRef.current));
+        // ~6 Hz preview updates feel responsive without thrashing React.
+        if (scoreTick % 10 === 0) setBreakdown(scoreBreakdown(statsRef.current));
         rafRef.current = requestAnimationFrame(tick);
       };
       tick();
@@ -178,7 +206,14 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
     ctx.stroke();
   }
 
-  useEffect(() => () => stop(), []);
+  useEffect(() => () => {
+    stop();
+    if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+  }, []);
+
+  const tier = tierLabel(finalFlash ?? breakdown.score);
+  const displayScore = finalFlash ?? breakdown.score;
+  const isFinal = finalFlash !== null;
 
   return (
     <div className="rounded-2xl border border-border bg-card/60 p-4">
@@ -190,11 +225,6 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
         <div className="flex items-center gap-3">
           <div className="text-right">
             <div className="font-mono text-xl text-[var(--neon)]">{note}</div>
-            {active && (
-              <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
-                live <span className="font-mono text-[var(--neon-2)]">{liveScore}</span>
-              </div>
-            )}
           </div>
           {active ? (
             <Button size="sm" variant="outline" onClick={stop}><MicOff className="mr-1 size-4" /> Stop</Button>
@@ -203,7 +233,72 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
           )}
         </div>
       </div>
+
+      {/* Live scoring preview */}
+      {(active || isFinal) && (
+        <div
+          className={`mb-3 rounded-xl border p-3 transition-all ${
+            isFinal
+              ? "border-[var(--neon)] bg-[var(--neon)]/10 shadow-[0_0_40px_-10px_var(--neon)]"
+              : "border-border/60 bg-stage/40"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest ${
+                  isFinal ? "bg-[var(--neon)] text-black" : "bg-white/5 text-muted-foreground"
+                }`}
+              >
+                {isFinal ? <><Sparkles className="size-3" /> Final</> : "Live"}
+              </span>
+              <span className="text-xs" style={{ color: tier.color }}>{tier.label}</span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span
+                className={`font-display font-black tabular-nums transition-all ${
+                  isFinal ? "text-5xl text-gradient" : "text-3xl text-[var(--neon-2)]"
+                }`}
+              >
+                {displayScore}
+              </span>
+              <span className="text-xs text-muted-foreground">/100</span>
+            </div>
+          </div>
+
+          {/* Subscore bars */}
+          <div className="mt-3 space-y-1.5">
+            <Meter label="Voice coverage" value={breakdown.voicedRatio} weight="40%" />
+            <Meter label="Pitch accuracy" value={breakdown.stability} weight="45%" />
+            <Meter label="Dynamics" value={breakdown.dynamics} weight="15%" />
+          </div>
+          {isFinal && (
+            <p className="mt-2 text-center text-[11px] uppercase tracking-widest text-muted-foreground">
+              Submitted to the leaderboard
+            </p>
+          )}
+        </div>
+      )}
+
       <canvas ref={canvasRef} width={600} height={120} className="h-24 w-full rounded-lg bg-stage/60" />
     </div>
   );
 });
+
+function Meter({ label, value, weight }: { label: string; value: number; weight: string }) {
+  const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
+  return (
+    <div>
+      <div className="mb-0.5 flex items-center justify-between text-[10px] uppercase tracking-widest text-muted-foreground">
+        <span>{label} <span className="text-muted-foreground/60">· {weight}</span></span>
+        <span className="font-mono tabular-nums">{pct}</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-[var(--neon)] to-[var(--neon-2)] transition-all duration-200"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
