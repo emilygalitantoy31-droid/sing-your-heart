@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 
 // Local mic pitch line — autocorrelation. No upload, no server.
 function autoCorrelate(buf: Float32Array, sampleRate: number): number {
