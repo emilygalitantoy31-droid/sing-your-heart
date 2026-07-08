@@ -259,6 +259,21 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
         </div>
       </div>
 
+      {active && (
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Input</span>
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/5">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-[var(--neon)] to-[var(--neon-2)] transition-[width] duration-75"
+              style={{ width: `${Math.min(100, Math.round(level * 600))}%` }}
+            />
+          </div>
+          <span className="w-8 text-right font-mono text-[10px] text-muted-foreground">
+            {level < 0.003 ? "quiet" : "ok"}
+          </span>
+        </div>
+      )}
+
       {/* Live scoring preview */}
       {(active || isFinal) && (
         <div
