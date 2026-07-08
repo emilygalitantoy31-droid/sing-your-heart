@@ -46,19 +46,33 @@ export function YouTubePlayer({
   onEnded?: () => void;
   onStateChange?: (state: number) => void;
 }) {
-  const elRef = useRef<HTMLDivElement | null>(null);
+  // Stable container React owns. We append a throwaway child inside it for
+  // YouTube to replace with its <iframe>, so React never tries to unmount
+  // a node that YouTube already swapped out (which throws NotFoundError:
+  // Failed to execute 'removeChild' and crashes the whole page).
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<any>(null);
+  const mountRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    if (!videoId || !elRef.current) return;
+    if (!videoId || !containerRef.current) return;
+
+    // Reuse existing player if present.
+    if (playerRef.current) {
+      try { playerRef.current.loadVideoById(videoId); } catch { /* ignore */ }
+      return;
+    }
+
+    // Create an inner mount node that YouTube can replace.
+    const mount = document.createElement("div");
+    mount.className = "size-full";
+    containerRef.current.appendChild(mount);
+    mountRef.current = mount;
+
     loadYouTubeAPI().then(() => {
-      if (cancelled || !elRef.current) return;
-      if (playerRef.current) {
-        playerRef.current.loadVideoById(videoId);
-        return;
-      }
-      playerRef.current = new window.YT.Player(elRef.current, {
+      if (cancelled || !mountRef.current) return;
+      playerRef.current = new window.YT.Player(mountRef.current, {
         videoId,
         playerVars: { autoplay: 1, modestbranding: 1, rel: 0, playsinline: 1, controls: 1 },
         events: {
@@ -78,9 +92,20 @@ export function YouTubePlayer({
         },
       });
     });
+
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId]);
+
+  // On unmount (or when videoId becomes null and the container un-renders),
+  // destroy the YT player so its iframe is removed before React tears down.
+  useEffect(() => {
+    return () => {
+      try { playerRef.current?.destroy?.(); } catch { /* ignore */ }
+      playerRef.current = null;
+      mountRef.current = null;
+    };
+  }, []);
 
   if (!videoId) {
     return (
@@ -91,7 +116,7 @@ export function YouTubePlayer({
   }
   return (
     <div className="aspect-video w-full overflow-hidden rounded-xl border border-border bg-black">
-      <div ref={elRef} className="size-full" />
+      <div ref={containerRef} className="size-full" />
     </div>
   );
 }
