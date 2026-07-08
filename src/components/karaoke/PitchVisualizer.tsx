@@ -120,10 +120,20 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
 
   async function start() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false }, video: false });
+      if (!navigator.mediaDevices?.getUserMedia) {
+        toast.error("Your browser doesn't support mic access.");
+        return;
+      }
+      // Enable AGC + noise handling defaults — most laptop mics are quiet without them.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: false,
+      });
       streamRef.current = stream;
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ac: AudioContext = new Ctx();
+      // Some browsers start the AudioContext suspended until a gesture — resume explicitly.
+      if (ac.state === "suspended") { try { await ac.resume(); } catch { /* ignore */ } }
       ctxRef.current = ac;
       const src = ac.createMediaStreamSource(stream);
       const analyser = ac.createAnalyser();
@@ -132,6 +142,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
       const buf = new Float32Array(analyser.fftSize);
       setActive(true);
       activeRef.current = true;
+      toast.success("Mic on — sing away!");
 
       let scoreTick = 0;
       const tick = () => {
@@ -139,6 +150,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
         let sum = 0;
         for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
         const rms = Math.sqrt(sum / buf.length);
+        setLevel(rms);
         statsRef.current.rmsSum += rms;
         statsRef.current.rmsFrames += 1;
 
@@ -163,9 +175,19 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
         rafRef.current = requestAnimationFrame(tick);
       };
       tick();
-    } catch {
+    } catch (err: unknown) {
+      const e = err as { name?: string; message?: string };
       setActive(false);
       activeRef.current = false;
+      if (e.name === "NotAllowedError" || e.name === "SecurityError") {
+        toast.error("Mic blocked — allow microphone access in your browser settings.");
+      } else if (e.name === "NotFoundError" || e.name === "OverconstrainedError") {
+        toast.error("No microphone found on this device.");
+      } else if (e.name === "NotReadableError") {
+        toast.error("Mic is in use by another app. Close it and try again.");
+      } else {
+        toast.error(`Couldn't start mic${e.message ? `: ${e.message}` : ""}.`);
+      }
     }
   }
 
