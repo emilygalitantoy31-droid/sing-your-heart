@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 
 // Local mic pitch line — autocorrelation. No upload, no server.
 function autoCorrelate(buf: Float32Array, sampleRate: number): number {
@@ -8,7 +9,8 @@ function autoCorrelate(buf: Float32Array, sampleRate: number): number {
   let rms = 0;
   for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
   rms = Math.sqrt(rms / SIZE);
-  if (rms < 0.01) return -1;
+  // Lowered from 0.01 so quieter singers / lower-gain mics still register as voiced.
+  if (rms < 0.003) return -1;
 
   let r1 = 0, r2 = SIZE - 1;
   const thres = 0.2;
@@ -92,6 +94,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
   const [note, setNote] = useState<string>("—");
   const [breakdown, setBreakdown] = useState<Breakdown>({ score: 0, voicedRatio: 0, stability: 0, dynamics: 0 });
   const [finalFlash, setFinalFlash] = useState<number | null>(null);
+  const [level, setLevel] = useState(0);
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -118,10 +121,20 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
 
   async function start() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false }, video: false });
+      if (!navigator.mediaDevices?.getUserMedia) {
+        toast.error("Your browser doesn't support mic access.");
+        return;
+      }
+      // Enable AGC + noise handling defaults — most laptop mics are quiet without them.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: false,
+      });
       streamRef.current = stream;
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ac: AudioContext = new Ctx();
+      // Some browsers start the AudioContext suspended until a gesture — resume explicitly.
+      if (ac.state === "suspended") { try { await ac.resume(); } catch { /* ignore */ } }
       ctxRef.current = ac;
       const src = ac.createMediaStreamSource(stream);
       const analyser = ac.createAnalyser();
@@ -130,6 +143,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
       const buf = new Float32Array(analyser.fftSize);
       setActive(true);
       activeRef.current = true;
+      toast.success("Mic on — sing away!");
 
       let scoreTick = 0;
       const tick = () => {
@@ -137,6 +151,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
         let sum = 0;
         for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
         const rms = Math.sqrt(sum / buf.length);
+        setLevel(rms);
         statsRef.current.rmsSum += rms;
         statsRef.current.rmsFrames += 1;
 
@@ -161,9 +176,19 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
         rafRef.current = requestAnimationFrame(tick);
       };
       tick();
-    } catch {
+    } catch (err: unknown) {
+      const e = err as { name?: string; message?: string };
       setActive(false);
       activeRef.current = false;
+      if (e.name === "NotAllowedError" || e.name === "SecurityError") {
+        toast.error("Mic blocked — allow microphone access in your browser settings.");
+      } else if (e.name === "NotFoundError" || e.name === "OverconstrainedError") {
+        toast.error("No microphone found on this device.");
+      } else if (e.name === "NotReadableError") {
+        toast.error("Mic is in use by another app. Close it and try again.");
+      } else {
+        toast.error(`Couldn't start mic${e.message ? `: ${e.message}` : ""}.`);
+      }
     }
   }
 
@@ -233,6 +258,21 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
           )}
         </div>
       </div>
+
+      {active && (
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Input</span>
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/5">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-[var(--neon)] to-[var(--neon-2)] transition-[width] duration-75"
+              style={{ width: `${Math.min(100, Math.round(level * 600))}%` }}
+            />
+          </div>
+          <span className="w-8 text-right font-mono text-[10px] text-muted-foreground">
+            {level < 0.003 ? "quiet" : "ok"}
+          </span>
+        </div>
+      )}
 
       {/* Live scoring preview */}
       {(active || isFinal) && (
