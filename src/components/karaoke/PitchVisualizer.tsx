@@ -9,7 +9,8 @@ function autoCorrelate(buf: Float32Array, sampleRate: number): number {
   let rms = 0;
   for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
   rms = Math.sqrt(rms / SIZE);
-  if (rms < 0.01) return -1;
+  // Lowered from 0.01 so quieter singers / lower-gain mics still register as voiced.
+  if (rms < 0.003) return -1;
 
   let r1 = 0, r2 = SIZE - 1;
   const thres = 0.2;
