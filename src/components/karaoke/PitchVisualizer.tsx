@@ -125,7 +125,9 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
 
   async function start() {
     try {
+      setMicStatus("checking");
       if (!navigator.mediaDevices?.getUserMedia) {
+        setMicStatus("error");
         toast.error("Your browser doesn't support mic access.");
         return;
       }
@@ -147,6 +149,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
       const buf = new Float32Array(analyser.fftSize);
       setActive(true);
       activeRef.current = true;
+      setMicStatus("active-quiet");
       toast.success("Mic on — sing away!");
 
       let scoreTick = 0;
@@ -161,6 +164,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
 
         const f = autoCorrelate(buf, ac.sampleRate);
         statsRef.current.frames += 1;
+        let hadVoice = false;
         if (f > 50 && f < 1500) {
           const { name, octave } = freqToNote(f);
           setNote(`${name}${octave}`);
@@ -169,9 +173,20 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
           const cents = Math.abs(midi - Math.round(midi)) * 100;
           statsRef.current.voiced += 1;
           statsRef.current.stableCents += cents;
+          hadVoice = true;
         } else {
           historyRef.current.push(0);
         }
+
+        // Update mic status based on whether voice was detected this frame
+        if (hadVoice) {
+          if (voiceTimerRef.current) window.clearTimeout(voiceTimerRef.current);
+          setMicStatus("active-voice");
+          voiceTimerRef.current = window.setTimeout(() => {
+            setMicStatus("active-quiet");
+          }, 800);
+        }
+
         if (historyRef.current.length > 200) historyRef.current.shift();
         draw();
         scoreTick += 1;
@@ -185,12 +200,16 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
       setActive(false);
       activeRef.current = false;
       if (e.name === "NotAllowedError" || e.name === "SecurityError") {
+        setMicStatus("blocked");
         toast.error("Mic blocked — allow microphone access in your browser settings.");
       } else if (e.name === "NotFoundError" || e.name === "OverconstrainedError") {
+        setMicStatus("not-found");
         toast.error("No microphone found on this device.");
       } else if (e.name === "NotReadableError") {
+        setMicStatus("in-use");
         toast.error("Mic is in use by another app. Close it and try again.");
       } else {
+        setMicStatus("error");
         toast.error(`Couldn't start mic${e.message ? `: ${e.message}` : ""}.`);
       }
     }
