@@ -357,6 +357,42 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
   );
 });
 
+function statusInfo(status: typeof micStatus) {
+  switch (status) {
+    case "idle":
+      return { label: "Mic ready — press Start", color: "bg-muted-foreground", icon: Mic };
+    case "checking":
+      return { label: "Checking for mic…", color: "bg-amber-400", icon: Mic };
+    case "active-voice":
+      return { label: "Mic on · voice detected", color: "bg-emerald-400", icon: Volume2 };
+    case "active-quiet":
+      return { label: "Mic on · quiet", color: "bg-amber-400", icon: VolumeX };
+    case "blocked":
+      return { label: "Mic blocked — check permissions", color: "bg-red-500", icon: AlertCircle };
+    case "not-found":
+      return { label: "No mic detected", color: "bg-red-500", icon: MicOff };
+    case "in-use":
+      return { label: "Mic in use by another app", color: "bg-red-500", icon: AlertCircle };
+    case "error":
+      return { label: "Mic error", color: "bg-red-500", icon: AlertCircle };
+  }
+}
+
+function MicStatusBadge({ status }: { status: typeof micStatus }) {
+  const info = statusInfo(status);
+  const Icon = info.icon;
+  return (
+    <div className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-stage/40 px-2.5 py-1.5">
+      <span className={`relative flex size-2`}>
+        <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${info.color}`} />
+        <span className={`relative inline-flex size-2 rounded-full ${info.color}`} />
+      </span>
+      <Icon className="size-3.5 text-muted-foreground" />
+      <span className="text-[11px] font-medium text-muted-foreground">{info.label}</span>
+    </div>
+  );
+}
+
 function Meter({ label, value, weight }: { label: string; value: number; weight: string }) {
   const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
   return (
