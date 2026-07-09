@@ -149,6 +149,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
       // Some browsers start the AudioContext suspended until a gesture — resume explicitly.
       if (ac.state === "suspended") { try { await ac.resume(); } catch { /* ignore */ } }
       ctxRef.current = ac;
+      setSampleRateHz(ac.sampleRate);
       const src = ac.createMediaStreamSource(stream);
       const analyser = ac.createAnalyser();
       analyser.fftSize = 2048;
