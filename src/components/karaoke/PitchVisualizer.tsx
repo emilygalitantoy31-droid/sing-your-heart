@@ -194,15 +194,18 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
       const e = err as { name?: string; message?: string };
       setActive(false);
       activeRef.current = false;
+      let msg = "";
       if (e.name === "NotAllowedError" || e.name === "SecurityError") {
-        toast.error("Mic blocked — allow microphone access in your browser settings.");
+        msg = "Mic blocked — allow microphone access in your browser settings.";
       } else if (e.name === "NotFoundError" || e.name === "OverconstrainedError") {
-        toast.error("No microphone found on this device.");
+        msg = "No microphone found on this device.";
       } else if (e.name === "NotReadableError") {
-        toast.error("Mic is in use by another app. Close it and try again.");
+        msg = "Mic is in use by another app. Close it and try again.";
       } else {
-        toast.error(`Couldn't start mic${e.message ? `: ${e.message}` : ""}.`);
+        msg = `Couldn't start mic${e.message ? `: ${e.message}` : ""}.`;
       }
+      setMicError(`${e.name ?? "Error"}: ${msg}`);
+      toast.error(msg);
     }
   }
 
