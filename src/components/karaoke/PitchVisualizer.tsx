@@ -137,6 +137,13 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
         video: false,
       });
       streamRef.current = stream;
+      const track = stream.getAudioTracks()[0];
+      if (track) {
+        setDeviceLabel(track.label || "(unnamed input)");
+        const s = track.getSettings();
+        setTrackSettings(s);
+        setDeviceId(s.deviceId || "—");
+      }
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ac: AudioContext = new Ctx();
       // Some browsers start the AudioContext suspended until a gesture — resume explicitly.
