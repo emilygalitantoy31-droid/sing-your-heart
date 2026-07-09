@@ -95,6 +95,10 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
   const [breakdown, setBreakdown] = useState<Breakdown>({ score: 0, voicedRatio: 0, stability: 0, dynamics: 0 });
   const [finalFlash, setFinalFlash] = useState<number | null>(null);
   const [level, setLevel] = useState(0);
+  const [micStatus, setMicStatus] = useState<
+    "idle" | "checking" | "active-voice" | "active-quiet" | "blocked" | "not-found" | "in-use" | "error"
+  >("idle");
+  const voiceTimerRef = useRef<number | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
