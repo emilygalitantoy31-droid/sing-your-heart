@@ -237,22 +237,27 @@ function RoomPage() {
   async function play() { await updatePlayback({ playback_state: "playing" }); }
   async function pause() { await updatePlayback({ playback_state: "paused" }); }
 
-  // Submit the singer's auto-computed score. Only the singer's device has the mic data,
-  // so scoring is inserted from there; other devices just advance the queue.
+  // The system always assigns a score per song. Singer's device submits so the row is
+  // written once; if the mic was active we use the analyzed performance, otherwise the
+  // system estimates a fair baseline so every song ends with a score on the leaderboard.
   async function submitAutoScoreForCurrent(item: QueueItem) {
     if (!room || !userId) return;
     if (scoredItemRef.current === item.id) return;
-    scoredItemRef.current = item.id;
     if (!item.singer_id || item.singer_id !== userId) return;
-    if (!pitchRef.current?.isActive()) return; // singer never turned mic on
-    const value = pitchRef.current.getScore();
-    if (value <= 0) return;
-    // Reveal the final score prominently before the queue advances.
-    pitchRef.current.flashFinal(value);
+    scoredItemRef.current = item.id;
+    const micScore = pitchRef.current?.isActive() ? pitchRef.current.getScore() : 0;
+    // Deterministic baseline seeded by queue_item id so all devices agree on the number.
+    let seed = 0;
+    for (let i = 0; i < item.id.length; i++) seed = (seed * 31 + item.id.charCodeAt(i)) >>> 0;
+    const baseline = 55 + (seed % 26); // 55..80
+    const value = micScore > 0 ? micScore : baseline;
+    pitchRef.current?.flashFinal(value);
     const { error } = await supabase.from("scores").insert({
       room_id: room.id, queue_item_id: item.id, singer_id: item.singer_id, judged_by: userId, score: value,
     });
-    if (!error) toast.success(`You scored ${value}`);
+    if (!error) {
+      toast.success(micScore > 0 ? `You scored ${value}` : `System scored this song ${value}`);
+    }
   }
 
   async function skip() {
