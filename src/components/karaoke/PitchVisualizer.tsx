@@ -224,6 +224,9 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
     historyRef.current = [];
     setActive(false);
     activeRef.current = false;
+    setMicStatus("idle");
+    if (voiceTimerRef.current) window.clearTimeout(voiceTimerRef.current);
+    voiceTimerRef.current = null;
     setNote("—");
     draw();
   }
