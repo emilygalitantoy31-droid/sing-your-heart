@@ -95,6 +95,11 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
   const [breakdown, setBreakdown] = useState<Breakdown>({ score: 0, voicedRatio: 0, stability: 0, dynamics: 0 });
   const [finalFlash, setFinalFlash] = useState<number | null>(null);
   const [level, setLevel] = useState(0);
+  const [deviceLabel, setDeviceLabel] = useState<string>("—");
+  const [deviceId, setDeviceId] = useState<string>("—");
+  const [trackSettings, setTrackSettings] = useState<MediaTrackSettings | null>(null);
+  const [sampleRateHz, setSampleRateHz] = useState<number | null>(null);
+  const [micError, setMicError] = useState<string>("");
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -120,6 +125,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
   }), []);
 
   async function start() {
+    setMicError("");
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         toast.error("Your browser doesn't support mic access.");
@@ -131,11 +137,19 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
         video: false,
       });
       streamRef.current = stream;
+      const track = stream.getAudioTracks()[0];
+      if (track) {
+        setDeviceLabel(track.label || "(unnamed input)");
+        const s = track.getSettings();
+        setTrackSettings(s);
+        setDeviceId(s.deviceId || "—");
+      }
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ac: AudioContext = new Ctx();
       // Some browsers start the AudioContext suspended until a gesture — resume explicitly.
       if (ac.state === "suspended") { try { await ac.resume(); } catch { /* ignore */ } }
       ctxRef.current = ac;
+      setSampleRateHz(ac.sampleRate);
       const src = ac.createMediaStreamSource(stream);
       const analyser = ac.createAnalyser();
       analyser.fftSize = 2048;
@@ -180,15 +194,18 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
       const e = err as { name?: string; message?: string };
       setActive(false);
       activeRef.current = false;
+      let msg = "";
       if (e.name === "NotAllowedError" || e.name === "SecurityError") {
-        toast.error("Mic blocked — allow microphone access in your browser settings.");
+        msg = "Mic blocked — allow microphone access in your browser settings.";
       } else if (e.name === "NotFoundError" || e.name === "OverconstrainedError") {
-        toast.error("No microphone found on this device.");
+        msg = "No microphone found on this device.";
       } else if (e.name === "NotReadableError") {
-        toast.error("Mic is in use by another app. Close it and try again.");
+        msg = "Mic is in use by another app. Close it and try again.";
       } else {
-        toast.error(`Couldn't start mic${e.message ? `: ${e.message}` : ""}.`);
+        msg = `Couldn't start mic${e.message ? `: ${e.message}` : ""}.`;
       }
+      setMicError(`${e.name ?? "Error"}: ${msg}`);
+      toast.error(msg);
     }
   }
 
@@ -272,6 +289,43 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
             {level < 0.003 ? "quiet" : "ok"}
           </span>
         </div>
+      )}
+
+      {/* Mic diagnostics */}
+      {(active || micError) && (
+        <details className="mb-3 rounded-xl border border-border/60 bg-stage/40 p-3 text-xs" open={!!micError}>
+          <summary className="cursor-pointer select-none font-display text-xs font-semibold">
+            Mic diagnostics
+          </summary>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">
+            <dt className="text-muted-foreground">Device</dt>
+            <dd className="truncate">{deviceLabel}</dd>
+            <dt className="text-muted-foreground">Device ID</dt>
+            <dd className="truncate">{deviceId}</dd>
+            <dt className="text-muted-foreground">Sample rate</dt>
+            <dd>{sampleRateHz ? `${sampleRateHz} Hz` : "—"}</dd>
+            <dt className="text-muted-foreground">Channels</dt>
+            <dd>{trackSettings?.channelCount ?? "—"}</dd>
+            <dt className="text-muted-foreground">Echo cancel</dt>
+            <dd>{String(trackSettings?.echoCancellation ?? "—")}</dd>
+            <dt className="text-muted-foreground">Noise suppress</dt>
+            <dd>{String(trackSettings?.noiseSuppression ?? "—")}</dd>
+            <dt className="text-muted-foreground">Auto gain</dt>
+            <dd>{String(trackSettings?.autoGainControl ?? "—")}</dd>
+            <dt className="text-muted-foreground">RMS</dt>
+            <dd>{level.toFixed(4)}</dd>
+            <dt className="text-muted-foreground">Level</dt>
+            <dd>{Math.min(100, Math.round(level * 600))}%</dd>
+            <dt className="text-muted-foreground">Status</dt>
+            <dd>{active ? (level < 0.003 ? "quiet — no signal" : "receiving audio") : "stopped"}</dd>
+            {micError && (
+              <>
+                <dt className="text-destructive">Error</dt>
+                <dd className="text-destructive whitespace-pre-wrap break-words">{micError}</dd>
+              </>
+            )}
+          </dl>
+        </details>
       )}
 
       {/* Live scoring preview */}
