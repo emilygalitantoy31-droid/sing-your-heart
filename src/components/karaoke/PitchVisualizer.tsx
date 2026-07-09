@@ -367,7 +367,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
   );
 });
 
-function statusInfo(status: typeof micStatus) {
+function statusInfo(status: MicStatus) {
   switch (status) {
     case "idle":
       return { label: "Mic ready — press Start", color: "bg-muted-foreground", icon: Mic };
