@@ -260,6 +260,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
   useEffect(() => () => {
     stop();
     if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+    if (voiceTimerRef.current) window.clearTimeout(voiceTimerRef.current);
   }, []);
 
   const tier = tierLabel(finalFlash ?? breakdown.score);
