@@ -125,6 +125,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
   }), []);
 
   async function start() {
+    setMicError("");
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         toast.error("Your browser doesn't support mic access.");
