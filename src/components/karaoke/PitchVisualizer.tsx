@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, MicOff, Sparkles } from "lucide-react";
+import { Mic, MicOff, Sparkles, AlertCircle, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 
 // Local mic pitch line — autocorrelation. No upload, no server.
@@ -43,6 +43,16 @@ export type PitchVisualizerHandle = {
   isActive: () => boolean;
   flashFinal: (score: number) => void;
 };
+
+type MicStatus =
+  | "idle"
+  | "checking"
+  | "active-voice"
+  | "active-quiet"
+  | "blocked"
+  | "not-found"
+  | "in-use"
+  | "error";
 
 type ScoreStats = {
   frames: number;
@@ -95,6 +105,10 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
   const [breakdown, setBreakdown] = useState<Breakdown>({ score: 0, voicedRatio: 0, stability: 0, dynamics: 0 });
   const [finalFlash, setFinalFlash] = useState<number | null>(null);
   const [level, setLevel] = useState(0);
+  const [micStatus, setMicStatus] = useState<
+    "idle" | "checking" | "active-voice" | "active-quiet" | "blocked" | "not-found" | "in-use" | "error"
+  >("idle");
+  const voiceTimerRef = useRef<number | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -121,7 +135,9 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
 
   async function start() {
     try {
+      setMicStatus("checking");
       if (!navigator.mediaDevices?.getUserMedia) {
+        setMicStatus("error");
         toast.error("Your browser doesn't support mic access.");
         return;
       }
@@ -143,6 +159,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
       const buf = new Float32Array(analyser.fftSize);
       setActive(true);
       activeRef.current = true;
+      setMicStatus("active-quiet");
       toast.success("Mic on — sing away!");
 
       let scoreTick = 0;
@@ -157,6 +174,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
 
         const f = autoCorrelate(buf, ac.sampleRate);
         statsRef.current.frames += 1;
+        let hadVoice = false;
         if (f > 50 && f < 1500) {
           const { name, octave } = freqToNote(f);
           setNote(`${name}${octave}`);
@@ -165,9 +183,20 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
           const cents = Math.abs(midi - Math.round(midi)) * 100;
           statsRef.current.voiced += 1;
           statsRef.current.stableCents += cents;
+          hadVoice = true;
         } else {
           historyRef.current.push(0);
         }
+
+        // Update mic status based on whether voice was detected this frame
+        if (hadVoice) {
+          if (voiceTimerRef.current) window.clearTimeout(voiceTimerRef.current);
+          setMicStatus("active-voice");
+          voiceTimerRef.current = window.setTimeout(() => {
+            setMicStatus("active-quiet");
+          }, 800);
+        }
+
         if (historyRef.current.length > 200) historyRef.current.shift();
         draw();
         scoreTick += 1;
@@ -181,12 +210,16 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
       setActive(false);
       activeRef.current = false;
       if (e.name === "NotAllowedError" || e.name === "SecurityError") {
+        setMicStatus("blocked");
         toast.error("Mic blocked — allow microphone access in your browser settings.");
       } else if (e.name === "NotFoundError" || e.name === "OverconstrainedError") {
+        setMicStatus("not-found");
         toast.error("No microphone found on this device.");
       } else if (e.name === "NotReadableError") {
+        setMicStatus("in-use");
         toast.error("Mic is in use by another app. Close it and try again.");
       } else {
+        setMicStatus("error");
         toast.error(`Couldn't start mic${e.message ? `: ${e.message}` : ""}.`);
       }
     }
@@ -201,6 +234,9 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
     historyRef.current = [];
     setActive(false);
     activeRef.current = false;
+    setMicStatus("idle");
+    if (voiceTimerRef.current) window.clearTimeout(voiceTimerRef.current);
+    voiceTimerRef.current = null;
     setNote("—");
     draw();
   }
@@ -234,6 +270,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
   useEffect(() => () => {
     stop();
     if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+    if (voiceTimerRef.current) window.clearTimeout(voiceTimerRef.current);
   }, []);
 
   const tier = tierLabel(finalFlash ?? breakdown.score);
@@ -257,6 +294,11 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
             <Button size="sm" onClick={start}><Mic className="mr-1 size-4" /> Start</Button>
           )}
         </div>
+      </div>
+
+      {/* Mic status indicator */}
+      <div className="mb-3">
+        <MicStatusBadge status={micStatus} />
       </div>
 
       {active && (
@@ -324,6 +366,42 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
     </div>
   );
 });
+
+function statusInfo(status: MicStatus) {
+  switch (status) {
+    case "idle":
+      return { label: "Mic ready — press Start", color: "bg-muted-foreground", icon: Mic };
+    case "checking":
+      return { label: "Checking for mic…", color: "bg-amber-400", icon: Mic };
+    case "active-voice":
+      return { label: "Mic on · voice detected", color: "bg-emerald-400", icon: Volume2 };
+    case "active-quiet":
+      return { label: "Mic on · quiet", color: "bg-amber-400", icon: VolumeX };
+    case "blocked":
+      return { label: "Mic blocked — check permissions", color: "bg-red-500", icon: AlertCircle };
+    case "not-found":
+      return { label: "No mic detected", color: "bg-red-500", icon: MicOff };
+    case "in-use":
+      return { label: "Mic in use by another app", color: "bg-red-500", icon: AlertCircle };
+    case "error":
+      return { label: "Mic error", color: "bg-red-500", icon: AlertCircle };
+  }
+}
+
+function MicStatusBadge({ status }: { status: MicStatus }) {
+  const info = statusInfo(status);
+  const Icon = info.icon;
+  return (
+    <div className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-stage/40 px-2.5 py-1.5">
+      <span className={`relative flex size-2`}>
+        <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${info.color}`} />
+        <span className={`relative inline-flex size-2 rounded-full ${info.color}`} />
+      </span>
+      <Icon className="size-3.5 text-muted-foreground" />
+      <span className="text-[11px] font-medium text-muted-foreground">{info.label}</span>
+    </div>
+  );
+}
 
 function Meter({ label, value, weight }: { label: string; value: number; weight: string }) {
   const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
