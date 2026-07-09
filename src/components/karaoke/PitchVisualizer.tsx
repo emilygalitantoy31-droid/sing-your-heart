@@ -388,7 +388,7 @@ function statusInfo(status: MicStatus) {
   }
 }
 
-function MicStatusBadge({ status }: { status: typeof micStatus }) {
+function MicStatusBadge({ status }: { status: MicStatus }) {
   const info = statusInfo(status);
   const Icon = info.icon;
   return (
