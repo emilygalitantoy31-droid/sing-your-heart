@@ -44,6 +44,16 @@ export type PitchVisualizerHandle = {
   flashFinal: (score: number) => void;
 };
 
+type MicStatus =
+  | "idle"
+  | "checking"
+  | "active-voice"
+  | "active-quiet"
+  | "blocked"
+  | "not-found"
+  | "in-use"
+  | "error";
+
 type ScoreStats = {
   frames: number;
   voiced: number;
