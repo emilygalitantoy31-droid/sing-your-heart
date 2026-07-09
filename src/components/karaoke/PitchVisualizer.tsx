@@ -291,6 +291,43 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
         </div>
       )}
 
+      {/* Mic diagnostics */}
+      {(active || micError) && (
+        <details className="mb-3 rounded-xl border border-border/60 bg-stage/40 p-3 text-xs" open={!!micError}>
+          <summary className="cursor-pointer select-none font-display text-xs font-semibold">
+            Mic diagnostics
+          </summary>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">
+            <dt className="text-muted-foreground">Device</dt>
+            <dd className="truncate">{deviceLabel}</dd>
+            <dt className="text-muted-foreground">Device ID</dt>
+            <dd className="truncate">{deviceId}</dd>
+            <dt className="text-muted-foreground">Sample rate</dt>
+            <dd>{sampleRateHz ? `${sampleRateHz} Hz` : "—"}</dd>
+            <dt className="text-muted-foreground">Channels</dt>
+            <dd>{trackSettings?.channelCount ?? "—"}</dd>
+            <dt className="text-muted-foreground">Echo cancel</dt>
+            <dd>{String(trackSettings?.echoCancellation ?? "—")}</dd>
+            <dt className="text-muted-foreground">Noise suppress</dt>
+            <dd>{String(trackSettings?.noiseSuppression ?? "—")}</dd>
+            <dt className="text-muted-foreground">Auto gain</dt>
+            <dd>{String(trackSettings?.autoGainControl ?? "—")}</dd>
+            <dt className="text-muted-foreground">RMS</dt>
+            <dd>{level.toFixed(4)}</dd>
+            <dt className="text-muted-foreground">Level</dt>
+            <dd>{Math.min(100, Math.round(level * 600))}%</dd>
+            <dt className="text-muted-foreground">Status</dt>
+            <dd>{active ? (level < 0.003 ? "quiet — no signal" : "receiving audio") : "stopped"}</dd>
+            {micError && (
+              <>
+                <dt className="text-destructive">Error</dt>
+                <dd className="text-destructive whitespace-pre-wrap break-words">{micError}</dd>
+              </>
+            )}
+          </dl>
+        </details>
+      )}
+
       {/* Live scoring preview */}
       {(active || isFinal) && (
         <div
