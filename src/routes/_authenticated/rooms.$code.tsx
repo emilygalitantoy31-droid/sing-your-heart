@@ -136,11 +136,12 @@ function RoomPage() {
 
   // Compensates for YouTube's post-seek buffer so followers don't consistently trail.
   const FOLLOWER_LOOKAHEAD = 0.7;
-  // Ignore small drift; only correct when clearly out of sync so we don't re-buffer constantly.
-  const FOLLOWER_TOLERANCE = 0.9;
-  const CONTROLLER_TOLERANCE = 1.5;
+  // Ignore drift aggressively — re-seeking mid-playback re-buffers the video on every device.
+  // Only correct when clearly out of sync (network hiccup, tab throttled, late-joiner).
+  const FOLLOWER_TOLERANCE = 2.5;
+  const CONTROLLER_TOLERANCE = 2.0;
   // After a seek, the player buffers ~1-2s. Don't re-seek during that window.
-  const SEEK_COOLDOWN_MS = 2500;
+  const SEEK_COOLDOWN_MS = 3500;
 
   const applySync = useCallback((opts?: { force?: boolean }) => {
     const r = roomRef.current;
@@ -172,19 +173,23 @@ function RoomPage() {
     else if (r.playback_state === "paused") p.pause();
   }, [canControl]);
 
-  // Apply on room/current change (new video, state change, seek by controller).
+  // Apply on song change or play/pause transitions only. We deliberately EXCLUDE
+  // position_seconds/playback_updated_at from the signature: the controller heartbeat
+  // rewrites those every few seconds, and re-seeking on each heartbeat causes every
+  // follower's YouTube player to re-buffer. Gradual drift is handled by the periodic
+  // correction interval below (which respects SEEK_COOLDOWN_MS + a wide tolerance).
   useEffect(() => {
     if (!room || !current) return;
-    const sig = `${current.id}:${room.playback_state}:${room.position_seconds}:${room.playback_updated_at}`;
+    const sig = `${current.id}:${room.playback_state}`;
     if (sig === lastAppliedRef.current) return;
     lastAppliedRef.current = sig;
     applySync({ force: true });
-  }, [room, current, applySync]);
+  }, [room?.playback_state, current?.id, applySync]);
 
-  // Continuous drift correction for followers.
+  // Continuous drift correction for followers (gentle — every 8s, wide tolerance).
   useEffect(() => {
     if (!current || canControl) return;
-    const id = window.setInterval(() => applySync(), 3000);
+    const id = window.setInterval(() => applySync(), 8000);
     return () => window.clearInterval(id);
   }, [current, canControl, applySync]);
 
@@ -199,7 +204,8 @@ function RoomPage() {
     };
   }, [applySync]);
 
-  // Controller heartbeat: publish real playhead every 4s so late-joiners land accurately.
+  // Controller heartbeat: publish real playhead every 10s so late-joiners land accurately.
+  // Kept infrequent so followers aren't nudged into seeks that re-buffer the video.
   useEffect(() => {
     if (!room || !current || !canControl || room.playback_state !== "playing") return;
     const id = window.setInterval(async () => {
@@ -210,7 +216,7 @@ function RoomPage() {
         position_seconds: pos,
         playback_updated_at: new Date().toISOString(),
       }).eq("id", room.id);
-    }, 4000);
+    }, 10000);
     return () => window.clearInterval(id);
   }, [room?.id, room?.playback_state, current?.id, canControl]);
 
