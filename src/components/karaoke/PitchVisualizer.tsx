@@ -344,6 +344,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
           onChange={async (e) => {
             const id = e.target.value;
             setSelectedDeviceId(id);
+            try { window.localStorage.setItem("karaoke.micDeviceId", id); } catch { /* ignore */ }
             if (activeRef.current) {
               stop();
               // Give the previous stream a tick to release before reopening.
