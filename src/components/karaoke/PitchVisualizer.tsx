@@ -157,10 +157,20 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
         return;
       }
       // Enable AGC + noise handling defaults — most laptop mics are quiet without them.
+      const audioConstraints: MediaTrackConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      };
+      if (selectedDeviceId && selectedDeviceId !== "default") {
+        audioConstraints.deviceId = { exact: selectedDeviceId };
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: audioConstraints,
         video: false,
       });
+      // Device labels only populate after permission is granted — refresh now.
+      refreshDevices();
       streamRef.current = stream;
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ac: AudioContext = new Ctx();
