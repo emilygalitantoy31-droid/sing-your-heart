@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, Sparkles, AlertCircle, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
@@ -107,7 +108,11 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
   const [level, setLevel] = useState(0);
   const [micStatus, setMicStatus] = useState<MicStatus>("idle");
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("default");
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>(() => {
+    if (typeof window === "undefined") return "default";
+    try { return window.localStorage.getItem("karaoke.micDeviceId") || "default"; }
+    catch { return "default"; }
+  });
   const voiceTimerRef = useRef<number | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -147,6 +152,14 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
     navigator.mediaDevices?.addEventListener?.("devicechange", handler);
     return () => navigator.mediaDevices?.removeEventListener?.("devicechange", handler);
   }, []);
+
+  // Once devices are enumerated with labels, drop a saved id that's no longer plugged in.
+  useEffect(() => {
+    if (selectedDeviceId === "default" || devices.length === 0) return;
+    const stillHere = devices.some((d) => d.deviceId === selectedDeviceId);
+    if (!stillHere) setSelectedDeviceId("default");
+  }, [devices, selectedDeviceId]);
+
 
   async function start() {
     try {
@@ -331,6 +344,7 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
           onChange={async (e) => {
             const id = e.target.value;
             setSelectedDeviceId(id);
+            try { window.localStorage.setItem("karaoke.micDeviceId", id); } catch { /* ignore */ }
             if (activeRef.current) {
               stop();
               // Give the previous stream a tick to release before reopening.
