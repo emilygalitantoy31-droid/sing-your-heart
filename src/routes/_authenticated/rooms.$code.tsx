@@ -186,10 +186,10 @@ function RoomPage() {
     applySync({ force: true });
   }, [room?.playback_state, current?.id, applySync]);
 
-  // Continuous drift correction for followers.
+  // Continuous drift correction for followers (gentle — every 8s, wide tolerance).
   useEffect(() => {
     if (!current || canControl) return;
-    const id = window.setInterval(() => applySync(), 3000);
+    const id = window.setInterval(() => applySync(), 8000);
     return () => window.clearInterval(id);
   }, [current, canControl, applySync]);
 
@@ -204,7 +204,8 @@ function RoomPage() {
     };
   }, [applySync]);
 
-  // Controller heartbeat: publish real playhead every 4s so late-joiners land accurately.
+  // Controller heartbeat: publish real playhead every 10s so late-joiners land accurately.
+  // Kept infrequent so followers aren't nudged into seeks that re-buffer the video.
   useEffect(() => {
     if (!room || !current || !canControl || room.playback_state !== "playing") return;
     const id = window.setInterval(async () => {
@@ -215,7 +216,7 @@ function RoomPage() {
         position_seconds: pos,
         playback_updated_at: new Date().toISOString(),
       }).eq("id", room.id);
-    }, 4000);
+    }, 10000);
     return () => window.clearInterval(id);
   }, [room?.id, room?.playback_state, current?.id, canControl]);
 
