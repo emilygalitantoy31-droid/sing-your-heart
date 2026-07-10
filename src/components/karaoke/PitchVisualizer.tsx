@@ -133,6 +133,21 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
     },
   }), []);
 
+  async function refreshDevices() {
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) return;
+      const list = await navigator.mediaDevices.enumerateDevices();
+      setDevices(list.filter((d) => d.kind === "audioinput"));
+    } catch { /* ignore */ }
+  }
+
+  useEffect(() => {
+    refreshDevices();
+    const handler = () => refreshDevices();
+    navigator.mediaDevices?.addEventListener?.("devicechange", handler);
+    return () => navigator.mediaDevices?.removeEventListener?.("devicechange", handler);
+  }, []);
+
   async function start() {
     try {
       setMicStatus("checking");
