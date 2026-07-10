@@ -321,10 +321,33 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
         </div>
       </div>
 
-      {/* Mic status indicator */}
-      <div className="mb-3">
+      {/* Mic status + device picker */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <MicStatusBadge status={micStatus} />
+        <select
+          aria-label="Microphone device"
+          className="ml-auto max-w-[220px] truncate rounded-lg border border-border/60 bg-stage/40 px-2 py-1.5 text-[11px] text-muted-foreground outline-none focus:border-[var(--neon)]"
+          value={selectedDeviceId}
+          onChange={async (e) => {
+            const id = e.target.value;
+            setSelectedDeviceId(id);
+            if (activeRef.current) {
+              stop();
+              // Give the previous stream a tick to release before reopening.
+              setTimeout(() => { void start(); }, 60);
+            }
+          }}
+          onFocus={() => { void refreshDevices(); }}
+        >
+          <option value="default">System default mic</option>
+          {devices.map((d, i) => (
+            <option key={d.deviceId || i} value={d.deviceId}>
+              {d.label || `Microphone ${i + 1}`}
+            </option>
+          ))}
+        </select>
       </div>
+
 
       {active && (
         <div className="mb-3 flex items-center gap-2">
