@@ -152,6 +152,14 @@ export const PitchVisualizer = forwardRef<PitchVisualizerHandle>(function PitchV
     return () => navigator.mediaDevices?.removeEventListener?.("devicechange", handler);
   }, []);
 
+  // Once devices are enumerated with labels, drop a saved id that's no longer plugged in.
+  useEffect(() => {
+    if (selectedDeviceId === "default" || devices.length === 0) return;
+    const stillHere = devices.some((d) => d.deviceId === selectedDeviceId);
+    if (!stillHere) setSelectedDeviceId("default");
+  }, [devices, selectedDeviceId]);
+
+
   async function start() {
     try {
       setMicStatus("checking");
